@@ -1,0 +1,49 @@
+# Default crawler configuration
+
+crawler:
+  # Maximum crawl depth from the starting URL
+  max_depth: 3
+  
+  # Maximum number of pages to crawl
+  max_pages: 100
+  
+  # Delay between requests (in seconds)
+  delay: 1.0
+  
+  # Follow external links
+  follow_external: false
+  
+  # Include assets (CSS, JS, images) in output
+  include_assets: false
+  
+  # Request timeout (in seconds)
+  timeout: 30
+  
+  # Number of retry attempts for failed requests
+  max_retries: 2
+
+browser:
+  # Run browser in headless mode
+  headless: true
+  
+  # Browser viewport size
+  viewport:
+    width: 1920
+    height: 1080
+
+output:
+  # Base output directory
+  base_dir: "sites"
+  
+  # Save HTML content
+  save_html: false
+  
+  # Save screenshots
+  save_screenshots: false
+
+logging:
+  # Log level (DEBUG, INFO, WARNING, ERROR)
+  level: "INFO"
+  
+  # Log file path (optional)
+  file: null
