@@ -27,6 +27,7 @@ class WebCrawler:
         self.output_dir = config.get('output_dir', 'sites')
         self.follow_external = config.get('follow_external', False)
         self.include_assets = config.get('include_assets', False)
+        self.mappings = config.get('mappings', None)
         
         self.visited_urls: Set[str] = set()
         self.page_count = 0
@@ -75,6 +76,7 @@ class WebCrawler:
         
         # Extract page content
         try:
+            # Always extract full page content for crawling
             # Get page title
             title = await page.title()
             
@@ -84,7 +86,7 @@ class WebCrawler:
             # Extract text content for markdown
             text_content = await self._extract_text_content(page)
             
-            # Extract links
+            # Extract links - always extract for crawling
             links = await self._extract_links(page, url)
             
             # Extract assets if requested
@@ -92,20 +94,26 @@ class WebCrawler:
             if self.include_assets:
                 assets = await self._extract_assets(page, url)
             
-            # Save page content as markdown
+            # If we have mappings, also extract mapped content for storage
+            mapped_content = None
+            if self.mappings:
+                mapped_content = await self._extract_mapped_content(page)
+            
+            # Save page content with optional mappings
             await self.writer.save_page(
                 url=url,
                 title=title,
                 content=text_content,
                 html=html_content,
                 links=links,
-                assets=assets
+                assets=assets,
+                mapped_content=mapped_content  # Pass mappings to writer
             )
             
             # Add delay between requests
             await asyncio.sleep(self.delay)
             
-            # Enqueue new URLs
+            # Always enqueue new URLs for crawling
             await self._enqueue_links(context, links, url)
             
         except Exception as e:
@@ -170,6 +178,103 @@ class WebCrawler:
             assets[asset_type] = [urljoin(current_url, url) for url in assets[asset_type]]
         
         return assets
+    
+    async def _extract_mapped_content(self, page: Page) -> Dict[str, str]:
+        """Extract content based on CSS selector mappings"""
+        mapped_content = {}
+        
+        for selector, markdown_heading in self.mappings.items():
+            try:
+                # Extract content from elements matching the selector
+                # Support complex CSS selectors including pseudo-classes, combinators, etc.
+                content = await page.evaluate('''(selector) => {
+                    try {
+                        const elements = document.querySelectorAll(selector);
+                        if (elements.length === 0) return null;
+                        
+                        // Combine content from all matching elements
+                        const texts = [];
+                        elements.forEach(el => {
+                            // Try different methods to get text content
+                            let text = '';
+                            
+                            // For form elements
+                            if (el.value !== undefined && el.tagName.match(/^(INPUT|TEXTAREA|SELECT)$/i)) {
+                                text = el.value;
+                            }
+                            // For contenteditable elements
+                            else if (el.isContentEditable) {
+                                text = el.innerText || el.textContent || '';
+                            }
+                            // For regular elements, prefer innerText for visible content
+                            else {
+                                text = el.innerText || el.textContent || '';
+                            }
+                            
+                            // Clean up the text
+                            text = text.trim();
+                            if (text) {
+                                texts.push(text);
+                            }
+                        });
+                        
+                        return texts.length > 0 ? texts.join('\\n\\n') : null;
+                    } catch (e) {
+                        // Return error message for debugging invalid selectors
+                        return null;
+                    }
+                }''', selector)
+                
+                if content:
+                    mapped_content[markdown_heading] = content
+                    self.logger.debug(f"Extracted content for selector '{selector}': {len(content)} chars")
+                else:
+                    self.logger.debug(f"No content found for selector '{selector}'")
+                    
+            except Exception as e:
+                self.logger.warning(f"Failed to extract content for selector '{selector}': {e}")
+        
+        return mapped_content
+    
+    async def _extract_header_content(self, page: Page) -> Optional[str]:
+        """Extract content from header element"""
+        try:
+            content = await page.evaluate('''() => {
+                const header = document.querySelector('header');
+                if (!header) return null;
+                
+                // Get text content from header
+                const text = header.innerText || header.textContent || '';
+                return text.trim() || null;
+            }''')
+            
+            if content:
+                self.logger.debug(f"Extracted header content: {len(content)} chars")
+            return content
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to extract header content: {e}")
+            return None
+    
+    async def _extract_entry_content(self, page: Page) -> Optional[str]:
+        """Extract content from .entry-content element"""
+        try:
+            content = await page.evaluate('''() => {
+                const entryContent = document.querySelector('.entry-content');
+                if (!entryContent) return null;
+                
+                // Get text content from .entry-content
+                const text = entryContent.innerText || entryContent.textContent || '';
+                return text.trim() || null;
+            }''')
+            
+            if content:
+                self.logger.debug(f"Extracted .entry-content: {len(content)} chars")
+            return content
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to extract .entry-content: {e}")
+            return None
     
     async def _enqueue_links(self, context: PlaywrightCrawlingContext, links: list, current_url: str) -> None:
         """Add discovered links to the crawl queue"""

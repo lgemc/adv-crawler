@@ -33,6 +33,7 @@ def main():
     crawl_parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
     crawl_parser.add_argument('--follow-external', action='store_true', help='Follow external links')
     crawl_parser.add_argument('--include-assets', action='store_true', help='Download CSS, JS, and image files')
+    crawl_parser.add_argument('--mapping', action='append', help='CSS selector to markdown mapping (e.g., "header:# Title", ".entry-content:# Content", "body > header:# Title")')
     
     # Parse arguments
     args = parser.parse_args()
@@ -46,6 +47,25 @@ def main():
         log_level = logging.DEBUG if args.verbose else logging.INFO
         logger = setup_logger(log_level)
         
+        # Parse mappings if provided
+        mappings = {}
+        if args.mapping:
+            for mapping_str in args.mapping:
+                if ':' in mapping_str:
+                    # Split on first colon to support complex selectors
+                    selector, markdown_heading = mapping_str.split(':', 1)
+                    selector = selector.strip()
+                    markdown_heading = markdown_heading.strip()
+                    
+                    # Validate markdown heading format
+                    if not markdown_heading.startswith('#'):
+                        markdown_heading = f"## {markdown_heading}"  # Default to h2 if no # provided
+                    
+                    mappings[selector] = markdown_heading
+                    logger.debug(f"Added mapping: '{selector}' -> '{markdown_heading}'")
+                else:
+                    logger.warning(f"Invalid mapping format: {mapping_str}. Expected format: 'selector:markdown_heading'")
+        
         # Configure crawler
         config = {
             'start_url': args.url,
@@ -55,7 +75,8 @@ def main():
             'output_dir': args.output_dir,
             'user_agent': args.user_agent,
             'follow_external': args.follow_external,
-            'include_assets': args.include_assets
+            'include_assets': args.include_assets,
+            'mappings': mappings if mappings else None
         }
         
         try:
