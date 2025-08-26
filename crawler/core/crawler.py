@@ -7,9 +7,8 @@ from typing import Dict, Set, Optional
 from urllib.parse import urljoin, urlparse
 import logging
 
-from crawlee import PlaywrightCrawler
-from crawlee.playwright_crawler import PlaywrightCrawlingContext
-from crawlee.storages import RequestQueue
+from crawlee import Request
+from crawlee.crawlers import PlaywrightCrawler, PlaywrightCrawlingContext
 from playwright.async_api import Page
 
 from ..storage.writer import MarkdownWriter
@@ -45,15 +44,15 @@ class WebCrawler:
         self.crawler = PlaywrightCrawler(
             max_requests_per_crawl=self.max_pages,
             request_handler=self._handle_request,
-            failed_request_handler=self._handle_failed_request,
+            # failed_request_handler=self._handle_failed_request,
             max_request_retries=2,
-            request_handler_timeout_secs=30,
-            browser_pool_options={
-                'use_fingerprints': False,
-            },
-            playwright_launch_options={
-                'headless': True,
-            },
+            # request_handler_timeout_secs=30,
+            # browser_pool_options={
+            #    'use_fingerprints': False,
+            # },
+            # playwright_launch_options={
+             #   'headless': True,
+            #},
             use_session_pool=False,
         )
     
@@ -196,18 +195,22 @@ class WebCrawler:
                 continue
             
             # Add to queue
-            await context.add_requests([{
-                'url': url,
-                'user_data': {'depth': current_depth + 1}
-            }])
+            await context.add_requests([
+                Request.from_url(
+                    url,
+                    user_data={'depth': current_depth + 1}
+                )
+            ])
     
     async def crawl(self) -> None:
         """Start the crawling process"""
         # Add the starting URL to the queue
-        await self.crawler.add_requests([{
-            'url': self.start_url,
-            'user_data': {'depth': 0}
-        }])
+        await self.crawler.add_requests([
+            Request.from_url(
+                self.start_url,
+                user_data={'depth': 0}
+            )
+        ])
         
         # Run the crawler
         await self.crawler.run()
